@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  Vibration,
-  Platform,
-  TextInput,
-  ScrollView,
+  View, Text, TouchableOpacity, StyleSheet, Alert,
+  Vibration, Platform, TextInput, ScrollView,
 } from 'react-native';
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
@@ -19,8 +12,20 @@ import { sosAPI, authAPI } from '../services/api';
 import { fallDetectionService } from '../services/fallDetectionService';
 import { Ionicons } from '@expo/vector-icons';
 
+const COLORS = {
+  bg: '#f0edf6', surface: '#ece8f3', raised: '#f7f4fc',
+  orchid: '#9b72cf', lavender: '#b39ddb', iris: '#7c6bc4',
+  lilac: '#d1c4e9', textPrimary: '#3d2c6e', textSecondary: '#8b7ab8',
+  shadow: '#c8c0dc', highlight: '#ffffff',
+  danger: '#e57373', dangerBg: '#ffebee', dangerBorder: '#ef9a9a',
+};
+const neu = (d = 6) => ({
+  shadowColor: COLORS.shadow, shadowOffset: { width: d, height: d },
+  shadowOpacity: 0.5, shadowRadius: d * 1.5, elevation: d,
+});
+
 export default function SOSScreen({ route, navigation }) {
-  const { theme, fontSize, titleSize, speak } = useAccessibility();
+  const { fontSize, titleSize, speak } = useAccessibility();
   const [sending, setSending] = useState(false);
   const [sound, setSound] = useState(null);
   const [fallDetected, setFallDetected] = useState(false);
@@ -32,18 +37,12 @@ export default function SOSScreen({ route, navigation }) {
 
   useEffect(() => {
     loadEmails();
-    return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
-    };
+    return () => { if (sound) sound.unloadAsync(); };
   }, []);
 
   useEffect(() => {
     if (route.params?.autoTriggerFall) {
-      console.log('Global Fall Detected - Auto Triggering Alert');
       triggerFallAlert();
-      // Clear the param so it doesn't repeatedly trigger on screen focus
       navigation.setParams({ autoTriggerFall: false });
     }
   }, [route.params?.autoTriggerFall]);
@@ -61,49 +60,29 @@ export default function SOSScreen({ route, navigation }) {
       const response = await authAPI.updateProfile({ emergencyEmails: emails });
       await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
       setEmergencyEmails(emails);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save emergency contacts');
-    }
+    } catch { Alert.alert('Error', 'Failed to save emergency contacts'); }
   };
 
   const addEmail = () => {
-    if (!newEmail || !newEmail.includes('@')) {
-      Alert.alert('Invalid', 'Please enter a valid email address');
-      return;
-    }
-    if (emergencyEmails.includes(newEmail)) {
-      Alert.alert('Duplicate', 'This email is already added');
-      return;
-    }
-    const updated = [...emergencyEmails, newEmail];
-    saveEmails(updated);
+    if (!newEmail || !newEmail.includes('@')) { Alert.alert('Invalid', 'Please enter a valid email address'); return; }
+    if (emergencyEmails.includes(newEmail)) { Alert.alert('Duplicate', 'This email is already added'); return; }
+    saveEmails([...emergencyEmails, newEmail]);
     setNewEmail('');
   };
 
-  const removeEmail = (email) => {
-    const updated = emergencyEmails.filter(e => e !== email);
-    saveEmails(updated);
-  };
+  const removeEmail = (email) => saveEmails(emergencyEmails.filter(e => e !== email));
 
   const playAlarm = async () => {
     try {
-      // Use a public alarm URL to avoid local file requirement errors during hackathon
-      const ALARM_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
       const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: ALARM_URL }
-      ).catch(err => {
-        console.warn('Alarm sound failed to load. Continuing without audio.');
-        return { sound: null };
-      });
+        { uri: 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3' }
+      ).catch(() => ({ sound: null }));
+      if (newSound) { setSound(newSound); await newSound.setIsLoopingAsync(true); await newSound.playAsync(); }
+    } catch (e) { console.log('Alarm error:', e); }
+  };
 
-      if (newSound) {
-        setSound(newSound);
-        await newSound.setIsLoopingAsync(true);
-        await newSound.playAsync();
-      }
-    } catch (error) {
-      console.log('Error playing alarm:', error);
-    }
+  const stopAlarm = () => {
+    if (sound) { sound.stopAsync(); sound.unloadAsync(); setSound(null); }
   };
 
   const triggerFallAlert = () => {
@@ -111,194 +90,171 @@ export default function SOSScreen({ route, navigation }) {
     setFallDetected(true);
     Vibration.vibrate([0, 500, 200, 500], true);
     playAlarm();
-    Speech.speak("Attention! A fall has been detected. Sending emergency alerts in 15 seconds. Press cancel if you are okay.", {
-      rate: 0.9,
-      pitch: 1.0,
-    });
-    
+    Speech.speak("Attention! A fall has been detected. Sending emergency alerts in 15 seconds. Press cancel if you are okay.", { rate: 0.9 });
     let time = 15;
     const id = setInterval(() => {
-      time -= 1;
-      setCountdown(time);
-      if (time <= 0) {
-        clearInterval(id);
-        triggerSOS();
-        setFallDetected(false);
-      }
+      time -= 1; setCountdown(time);
+      if (time <= 0) { clearInterval(id); triggerSOS(); setFallDetected(false); }
     }, 1000);
     setTimerId(id);
   };
 
   const cancelFallAlert = () => {
     if (timerId) clearInterval(timerId);
-    setFallDetected(false);
-    setCountdown(15);
-    stopAlarm();
-    Vibration.cancel();
-    Speech.stop();
-    speak("Emergency alert canceled.");
-  };
-
-  const stopAlarm = () => {
-    if (sound) {
-      sound.stopAsync();
-      sound.unloadAsync();
-      setSound(null);
-    }
+    setFallDetected(false); setCountdown(15);
+    stopAlarm(); Vibration.cancel(); Speech.stop();
+    speak('Emergency alert canceled.');
   };
 
   const triggerSOS = async () => {
-    setSending(true);
-    Vibration.vibrate([500, 500, 500]);
-    playAlarm();
-    setSosActive(true);
-
+    setSending(true); Vibration.vibrate([500, 500, 500]); playAlarm(); setSosActive(true);
     let location = null;
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
-        // Use getLastKnownPosition to prevent strict GPS lockup from blocking the email in buildings
         const loc = await Location.getLastKnownPositionAsync({});
-        if (loc) {
-          location = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-        }
+        if (loc) location = { lat: loc.coords.latitude, lng: loc.coords.longitude };
       }
-    } catch (error) {
-      console.log('Location error:', error);
-    }
-
+    } catch (e) { console.log('Location error:', e); }
     try {
       await sosAPI.trigger(location);
       speak('Emergency alert sent to caretakers');
-    } catch (error) {
-      console.log('SOS Error', error);
-      speak('Failed to send SOS');
-      stopAlarm();
-      setSosActive(false);
-    } finally {
-      setSending(false);
-    }
+    } catch {
+      speak('Failed to send SOS'); stopAlarm(); setSosActive(false);
+    } finally { setSending(false); }
   };
 
   return (
-    <ScrollView 
-      style={{ flex: 1, backgroundColor: theme.background }} 
-      contentContainerStyle={styles.container}
-    >
-      <Text style={[styles.title, { color: theme.text, fontSize: titleSize }]}>
-        Emergency SOS
-      </Text>
-      <Text style={[styles.subtitle, { color: theme.textSecondary, fontSize }]}>
-        Press and hold the button below to send an emergency alert to your caretakers
-      </Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {/* Header */}
+      <View style={styles.pageHeader}>
+        <Text style={styles.pageEyebrow}>Emergency</Text>
+        <Text style={[styles.pageTitle, { fontSize: titleSize + 2 }]}>SOS Alert</Text>
+        <Text style={styles.pageSub}>Tap the button below to send an immediate alert to your caretakers</Text>
+      </View>
 
-      <TouchableOpacity
-        style={[styles.sosButton, { backgroundColor: theme.accent }]}
-        onPress={() => {
-          console.log('🆘 SOS Button Pressed');
-          triggerSOS();
-        }}
-        activeOpacity={0.8}
-        accessibilityLabel="Emergency SOS button"
-      >
-        <Ionicons name="alert-circle" size={80} color="#FFFFFF" />
-        <Text style={[styles.sosText, { fontSize: fontSize + 10 }]}>SOS</Text>
-      </TouchableOpacity>
-
-      <Text style={[styles.info, { color: theme.textSecondary, fontSize: fontSize - 2 }]}>
-        • Alarm will sound immediately{"\n"}
-        • Email & App alerts sent to contacts{"\n"}
-        • Your location will be shared (if enabled)
-      </Text>
-
-      <Text style={[styles.sectionTitle, { color: theme.text, fontSize: fontSize }]}>Emergency Contacts</Text>
-      
-      <View style={styles.addContactContainer}>
-        <TextInput
-          style={[styles.input, { backgroundColor: theme.surface, color: theme.text, fontSize: fontSize - 2 }]}
-          placeholder="email@example.com"
-          placeholderTextColor={theme.textSecondary}
-          value={newEmail}
-          onChangeText={setNewEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TouchableOpacity style={[styles.addButton, { backgroundColor: theme.secondary }]} onPress={addEmail}>
-          <Text style={[styles.addButtonText, { color: theme.background }]}>Add</Text>
+      {/* SOS Button */}
+      <View style={styles.sosBtnWrap}>
+        {/* Ripple rings */}
+        <View style={styles.ring3} />
+        <View style={styles.ring2} />
+        <View style={styles.ring1} />
+        <TouchableOpacity
+          style={styles.sosBtn}
+          onPress={triggerSOS}
+          activeOpacity={0.85}
+          accessibilityLabel="Emergency SOS button"
+        >
+          <Ionicons name="alert-circle" size={52} color={COLORS.highlight} />
+          <Text style={[styles.sosBtnText, { fontSize: fontSize + 14 }]}>SOS</Text>
+          <Text style={[styles.sosBtnSub, { fontSize: fontSize - 4 }]}>Hold to alert</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.emailList}>
-        {emergencyEmails.map((email, index) => (
-          <View key={index} style={[styles.contactInfo, { backgroundColor: theme.surface }]}>
-            <Ionicons name="mail" size={20} color={theme.textSecondary} />
-            <Text style={[styles.contactText, { color: theme.text, fontSize: fontSize - 2, flex: 1 }]}>
-              {email}
-            </Text>
-            <TouchableOpacity onPress={() => removeEmail(email)}>
-              <Ionicons name="close-circle" size={24} color={theme.accent} />
-            </TouchableOpacity>
+      {/* Info chips */}
+      <View style={styles.infoRow}>
+        {[
+          { icon: 'volume-high-outline', text: 'Alarm sounds' },
+          { icon: 'mail-outline', text: 'Alerts sent' },
+          { icon: 'location-outline', text: 'Location shared' },
+        ].map((item) => (
+          <View key={item.text} style={styles.infoChip}>
+            <Ionicons name={item.icon} size={15} color={COLORS.orchid} />
+            <Text style={[styles.infoChipText, { fontSize: fontSize - 4 }]}>{item.text}</Text>
           </View>
         ))}
-        {emergencyEmails.length === 0 && (
-          <Text style={{color: theme.textSecondary, textAlign: 'center', marginTop: 10}}>No emergency contacts added yet.</Text>
-        )}
-      </ScrollView>
+      </View>
 
-      {/* Secret Hackathon Demo Button to trigger Fall Detection on Web */}
-      <TouchableOpacity 
-        style={[styles.simulateButton, { backgroundColor: theme.background, borderColor: theme.accent }]}
-        onPress={() => triggerFallAlert()}
-      >
-        <Ionicons name="body-outline" size={20} color={theme.accent} style={{marginRight: 8}} />
-        <Text style={{ color: theme.accent, fontSize: fontSize, fontWeight: 'bold' }}>
-          Simulate Fall (Test)
-        </Text>
+      {/* Emergency contacts */}
+      <View style={styles.sectionLabel}>
+        <Ionicons name="people-outline" size={15} color={COLORS.orchid} />
+        <Text style={[styles.sectionText, { fontSize: fontSize - 2 }]}>Emergency Contacts</Text>
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.addRow}>
+          <View style={styles.addInputWrap}>
+            <Ionicons name="mail-outline" size={15} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.addInput, { fontSize: fontSize - 1, color: COLORS.textPrimary, flex: 1 }]}
+              placeholder="email@example.com"
+              placeholderTextColor={COLORS.textSecondary}
+              value={newEmail}
+              onChangeText={setNewEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
+          <TouchableOpacity style={styles.addBtn} onPress={addEmail} activeOpacity={0.85}>
+            <Ionicons name="add" size={20} color={COLORS.highlight} />
+          </TouchableOpacity>
+        </View>
+
+        {emergencyEmails.length === 0 ? (
+          <Text style={[styles.emptyContacts, { fontSize: fontSize - 2 }]}>No contacts added yet</Text>
+        ) : (
+          emergencyEmails.map((email, index) => (
+            <View key={index} style={[styles.contactRow, index === emergencyEmails.length - 1 && { borderBottomWidth: 0 }]}>
+              <View style={styles.contactAvatar}>
+                <Ionicons name="person-outline" size={15} color={COLORS.orchid} />
+              </View>
+              <Text style={[styles.contactEmail, { fontSize: fontSize - 2, flex: 1 }]} numberOfLines={1}>{email}</Text>
+              <TouchableOpacity onPress={() => removeEmail(email)} style={styles.removeBtn}>
+                <Ionicons name="close" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+      </View>
+
+      {/* Simulate button */}
+      <TouchableOpacity style={styles.simulateBtn} onPress={triggerFallAlert} activeOpacity={0.8}>
+        <Ionicons name="body-outline" size={18} color={COLORS.orchid} />
+        <Text style={[styles.simulateBtnText, { fontSize: fontSize - 1 }]}>Simulate Fall Detection</Text>
+        <View style={styles.simulateBadge}><Text style={styles.simulateBadgeText}>TEST</Text></View>
       </TouchableOpacity>
 
+      {/* Fall detection modal */}
       {fallDetected && (
         <View style={styles.overlay}>
-          <View style={[styles.modal, { backgroundColor: theme.surface }]}>
-            <Ionicons name="warning" size={60} color={theme.accent} />
-            <Text style={[styles.modalTitle, { color: theme.text, fontSize: titleSize }]}>
-              Fall Detected!
+          <View style={styles.modal}>
+            <View style={styles.modalIconWrap}>
+              <Ionicons name="warning" size={40} color={COLORS.danger} />
+            </View>
+            <Text style={[styles.modalTitle, { fontSize: titleSize, color: COLORS.textPrimary }]}>Fall Detected!</Text>
+            <Text style={[styles.modalSub, { fontSize: fontSize - 1 }]}>
+              Sending SOS in
             </Text>
-            <Text style={[styles.modalText, { color: theme.text, fontSize: fontSize + 10 }]}>
-              SOS in {countdown}s
-            </Text>
-            <TouchableOpacity
-              style={[styles.cancelButton, { backgroundColor: theme.secondary }]}
-              onPress={cancelFallAlert}
-            >
-              <Text style={[styles.cancelText, { color: theme.background, fontSize }]}>
-                I'm Okay (Cancel)
-              </Text>
+            <View style={styles.countdownCircle}>
+              <Text style={[styles.countdownText, { fontSize: titleSize + 12 }]}>{countdown}</Text>
+              <Text style={[{ fontSize: fontSize - 3, color: COLORS.textSecondary, fontWeight: '600' }]}>seconds</Text>
+            </View>
+            <TouchableOpacity style={styles.cancelBtn} onPress={cancelFallAlert} activeOpacity={0.85}>
+              <Ionicons name="checkmark-circle" size={20} color={COLORS.highlight} />
+              <Text style={[styles.cancelBtnText, { fontSize }]}>I'm Okay — Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
+      {/* SOS sent modal */}
       {sosActive && (
         <View style={styles.overlay}>
-          <View style={[styles.modal, { backgroundColor: theme.surface }]}>
-            <Ionicons name="alert-circle" size={60} color={theme.accent} />
-            <Text style={[styles.modalTitle, { color: theme.text, fontSize: titleSize, textAlign: 'center' }]}>
-              SOS Sent
-            </Text>
-            <Text style={[styles.modalText, { color: theme.text, fontSize: fontSize, textAlign: 'center', marginBottom: 30 }]}>
-              Emergency alerts have been sent to your contacts. Are you OK?
+          <View style={styles.modal}>
+            <View style={[styles.modalIconWrap, { backgroundColor: COLORS.dangerBg }]}>
+              <Ionicons name="alert-circle" size={40} color={COLORS.danger} />
+            </View>
+            <Text style={[styles.modalTitle, { fontSize: titleSize, color: COLORS.textPrimary }]}>SOS Sent</Text>
+            <Text style={[styles.modalSub, { fontSize: fontSize - 1, textAlign: 'center', marginBottom: 24 }]}>
+              Emergency alerts have been sent to all your contacts. Are you okay?
             </Text>
             <TouchableOpacity
-              style={[styles.cancelButton, { backgroundColor: theme.secondary }]}
-              onPress={() => {
-                stopAlarm();
-                Vibration.cancel();
-                setSosActive(false);
-              }}
+              style={[styles.cancelBtn, { backgroundColor: COLORS.iris }]}
+              onPress={() => { stopAlarm(); Vibration.cancel(); setSosActive(false); }}
+              activeOpacity={0.85}
             >
-              <Text style={[styles.cancelText, { color: theme.background, fontSize }]}>
-                Yes, I'm OK (Stop Alarm)
-              </Text>
+              <Ionicons name="checkmark-circle" size={20} color={COLORS.highlight} />
+              <Text style={[styles.cancelBtnText, { fontSize }]}>Yes, I'm OK — Stop Alarm</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -308,107 +264,89 @@ export default function SOSScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  title: { fontWeight: 'bold', marginBottom: 10, textAlign: 'center' },
-  subtitle: { textAlign: 'center', marginBottom: 40 },
-  sosButton: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 40,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 5,
-      },
-      android: {
-        elevation: 8,
-      },
-      web: {
-        boxShadow: '0px 4px 5px rgba(0,0,0,0.3)',
-      },
-    }),
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: 24, paddingBottom: 56, alignItems: 'center' },
+
+  pageHeader: { alignItems: 'center', marginBottom: 36, marginTop: 8 },
+  pageEyebrow: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6 },
+  pageTitle: { fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5, marginBottom: 10 },
+  pageSub: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 20, fontWeight: '500', maxWidth: 280 },
+
+  sosBtnWrap: { alignItems: 'center', justifyContent: 'center', marginBottom: 28, width: 240, height: 240 },
+  ring3: { position: 'absolute', width: 230, height: 230, borderRadius: 115, backgroundColor: COLORS.dangerBg, opacity: 0.5 },
+  ring2: { position: 'absolute', width: 196, height: 196, borderRadius: 98, backgroundColor: COLORS.dangerBorder, opacity: 0.3 },
+  ring1: { position: 'absolute', width: 168, height: 168, borderRadius: 84, backgroundColor: COLORS.danger, opacity: 0.15 },
+  sosBtn: {
+    width: 148, height: 148, borderRadius: 74,
+    backgroundColor: COLORS.danger, justifyContent: 'center', alignItems: 'center',
+    shadowColor: COLORS.danger, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 16,
   },
-  sosText: { color: '#FFFFFF', fontWeight: 'bold', marginTop: 10 },
-  info: { textAlign: 'center', marginTop: 20 },
-  contactInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 15,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    padding: 10,
-    borderRadius: 10,
+  sosBtnText: { color: COLORS.highlight, fontWeight: '900', letterSpacing: 2, marginTop: 2 },
+  sosBtnSub: { color: 'rgba(255,255,255,0.75)', fontWeight: '600', marginTop: 2 },
+
+  infoRow: { flexDirection: 'row', gap: 10, marginBottom: 32, flexWrap: 'wrap', justifyContent: 'center' },
+  infoChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: COLORS.surface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, ...neu(3),
   },
-  contactText: { marginLeft: 8, fontWeight: '500' },
-  setupButton: {
-    marginTop: 10,
-    padding: 10,
+  infoChipText: { color: COLORS.textSecondary, fontWeight: '600' },
+
+  sectionLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, alignSelf: 'flex-start', paddingLeft: 4 },
+  sectionText: { color: COLORS.orchid, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+
+  card: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 20, width: '100%', marginBottom: 16, ...neu(6) },
+
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  addInputWrap: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.raised, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 4, ...neu(3),
   },
-  setupText: {
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
+  addInput: { paddingVertical: 11, fontWeight: '500' },
+  addBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: COLORS.iris, justifyContent: 'center', alignItems: 'center', ...neu(4),
   },
-  sectionTitle: {
-    fontWeight: 'bold',
-    marginTop: 30,
-    marginBottom: 10,
-    alignSelf: 'stretch',
-    textAlign: 'left'
+
+  emptyContacts: { color: COLORS.textSecondary, textAlign: 'center', paddingVertical: 8, fontWeight: '500' },
+  contactRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.lilac,
   },
-  addContactContainer: {
-    flexDirection: 'row',
-    alignSelf: 'stretch',
-    marginBottom: 10,
+  contactAvatar: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: COLORS.lilac, justifyContent: 'center', alignItems: 'center',
   },
-  input: {
-    flex: 1,
-    borderRadius: 8,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    marginRight: 10,
+  contactEmail: { color: COLORS.textPrimary, fontWeight: '600' },
+  removeBtn: { padding: 4 },
+
+  simulateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: COLORS.surface, borderRadius: 18, paddingVertical: 16, paddingHorizontal: 20,
+    width: '100%', borderWidth: 1.5, borderColor: COLORS.lilac, borderStyle: 'dashed', ...neu(4),
   },
-  addButton: {
-    justifyContent: 'center',
-    paddingHorizontal: 15,
-    borderRadius: 8,
-  },
-  addButtonText: {
-    fontWeight: 'bold',
-  },
-  emailList: {
-    alignSelf: 'stretch',
-    maxHeight: 150,
-  },
-  simulateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    marginTop: 20,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    alignSelf: 'stretch'
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  simulateBtnText: { flex: 1, color: COLORS.orchid, fontWeight: '700' },
+  simulateBadge: { backgroundColor: COLORS.lilac, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  simulateBadgeText: { fontSize: 10, fontWeight: '800', color: COLORS.orchid, letterSpacing: 0.5 },
+
+  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(61,44,110,0.45)', justifyContent: 'center', alignItems: 'center' },
   modal: {
-    padding: 30,
-    borderRadius: 20,
-    alignItems: 'center',
-    width: '85%',
+    backgroundColor: COLORS.bg, borderRadius: 32, padding: 32, width: '88%', alignItems: 'center',
+    shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.2, shadowRadius: 32, elevation: 24,
   },
-  modalTitle: { fontWeight: 'bold', marginTop: 15, marginBottom: 10 },
-  modalText: { fontWeight: 'bold', marginBottom: 30 },
-  cancelButton: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 12 },
-  cancelText: { fontWeight: 'bold' },
+  modalIconWrap: {
+    width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.dangerBg,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 20, ...neu(6),
+  },
+  modalTitle: { fontWeight: '800', letterSpacing: -0.5, marginBottom: 8 },
+  modalSub: { color: COLORS.textSecondary, fontWeight: '500', lineHeight: 20 },
+  countdownCircle: {
+    width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.surface,
+    justifyContent: 'center', alignItems: 'center', marginVertical: 24, ...neu(8),
+  },
+  countdownText: { fontWeight: '900', color: COLORS.danger, letterSpacing: -2 },
+  cancelBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: COLORS.iris, borderRadius: 18, paddingVertical: 15, paddingHorizontal: 24, width: '100%', justifyContent: 'center', ...neu(5),
+  },
+  cancelBtnText: { color: COLORS.highlight, fontWeight: '700' },
 });
