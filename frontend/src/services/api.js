@@ -36,6 +36,7 @@ export const medicineAPI = {
 export const moodAPI = {
   create: (data) => api.post('/moods', data),
   getAll: () => api.get('/moods'),
+  resetToday: (dayString) => api.delete('/moods/reset', { data: { dayString } }),
 };
 
 export const gameAPI = {

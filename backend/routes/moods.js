@@ -6,5 +6,6 @@ const { authenticate } = require('../middleware/auth');
 router.use(authenticate);
 router.post('/', moodController.createMood);
 router.get('/', moodController.getMoods);
+router.delete('/reset', moodController.resetTodayMood);
 
 module.exports = router;

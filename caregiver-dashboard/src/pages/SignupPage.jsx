@@ -17,7 +17,7 @@ const SignupPage = () => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/register', formData);
+      const response = await axios.post('http://130.1.11.163:5000/api/auth/register', formData);
       const { user, token } = response.data;
       
       login(user, token);

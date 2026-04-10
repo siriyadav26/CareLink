@@ -1,14 +1,37 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import * as Speech from 'expo-speech';
 
 const AccessibilityContext = createContext();
 
 export const useAccessibility = () => useContext(AccessibilityContext);
 
+export const COLORS = {
+  bg: '#f0edf6',
+  surface: '#ece8f3',
+  raised: '#f7f4fc',
+  orchid: '#9b72cf',
+  lavender: '#b39ddb',
+  iris: '#7c6bc4',
+  lilac: '#d1c4e9',
+  textPrimary: '#3d2c6e',
+  textSecondary: '#8b7ab8',
+  shadow: '#c8c0dc',
+  highlight: '#ffffff',
+  danger: '#e57373',
+  success: '#a8d8b9',
+};
+
+export const neu = (d = 6) => ({
+  shadowColor: COLORS.shadow,
+  shadowOffset: { width: d, height: d },
+  shadowOpacity: 0.5,
+  shadowRadius: d * 1.5,
+  elevation: d,
+});
+
 export const AccessibilityProvider = ({ children }) => {
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const [highContrast, setHighContrast] = useState(true);
-  const [largeText, setLargeText] = useState(true);
+  const [largeText, setLargeText] = useState(false);
   const [bigCursor, setBigCursor] = useState(false);
 
   const speak = (text) => {
@@ -17,46 +40,49 @@ export const AccessibilityProvider = ({ children }) => {
     }
   };
 
-  const theme = highContrast
-    ? {
-        background: '#0A1929',
-        surface: '#132F4C',
-        primary: '#FFFFFF',
-        secondary: '#64B5F6',
-        text: '#FFFFFF',
-        textSecondary: '#B0BEC5',
-        accent: '#FF5252',
-      }
-    : {
-        background: '#FFFFFF',
-        surface: '#F5F5F5',
-        primary: '#0A1929',
-        secondary: '#1976D2',
-        text: '#212121',
-        textSecondary: '#757575',
-        accent: '#FF5252',
-      };
+  const theme = {
+    background: COLORS.bg,
+    surface: COLORS.surface,
+    primary: COLORS.orchid,
+    secondary: COLORS.iris,
+    text: COLORS.textPrimary,
+    textSecondary: COLORS.textSecondary,
+    accent: COLORS.orchid,
+  };
 
-  const fontSize = largeText ? 18 : 14;
-  const titleSize = largeText ? 24 : 20;
-  const headingSize = largeText ? 20 : 16;
+  const fontSize = largeText ? 20 : 16;
+  const titleSize = largeText ? 28 : 24;
+  const headingSize = largeText ? 24 : 20;
+
+  const elements = React.useRef({});
+
+  const registerElement = (id, layout, label) => {
+    elements.current[id] = { layout, label };
+  };
+
+  const unregisterElement = (id) => {
+    delete elements.current[id];
+  };
 
   return (
     <AccessibilityContext.Provider
       value={{
         soundEnabled,
         setSoundEnabled,
-        highContrast,
-        setHighContrast,
         largeText,
         setLargeText,
         bigCursor,
         setBigCursor,
         speak,
         theme,
+        COLORS,
+        neu,
         fontSize,
         titleSize,
         headingSize,
+        registerElement,
+        unregisterElement,
+        elements,
       }}
     >
       {children}

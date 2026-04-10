@@ -14,6 +14,8 @@ import SettingsScreen from '../screens/SettingsScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import FaceLoginScreen from '../screens/FaceLoginScreen';
+import CaretakerDashboardScreen from '../screens/CaretakerDashboardScreen';
+import MedicineAlarmScreen from '../screens/MedicineAlarmScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -53,9 +55,39 @@ const MainTabs = () => {
   );
 };
 
+const CaretakerTabs = () => {
+  const { theme, fontSize } = useAccessibility();
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+          if (route.name === 'Patient Hub') iconName = 'people';
+          else if (route.name === 'Alerts') iconName = 'notifications';
+          else if (route.name === 'Settings') iconName = 'settings';
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: theme.secondary,
+        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarStyle: { backgroundColor: theme.surface, height: 70, paddingBottom: 10 },
+        tabBarLabelStyle: { fontSize: fontSize - 2 },
+        headerStyle: { backgroundColor: theme.background, elevation: 0, shadowOpacity: 0 },
+        headerTitleStyle: { color: theme.text, fontSize: fontSize + 4, fontWeight: 'bold' },
+        headerTintColor: theme.text,
+      })}
+    >
+      <Tab.Screen name="Patient Hub" component={CaretakerDashboardScreen} options={{ title: 'Monitoring' }} />
+      <Tab.Screen name="Alerts" component={SOSScreen} options={{ title: 'SOS Logs' }} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
+    </Tab.Navigator>
+  );
+};
+
 export default function AppNavigator() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [role, setRole] = useState('elderly');
   const { theme } = useAccessibility();
 
   useEffect(() => {
@@ -65,7 +97,11 @@ export default function AppNavigator() {
   const checkToken = async () => {
     try {
       const token = await AsyncStorage.getItem('token');
-      if (token) {
+      const userJson = await AsyncStorage.getItem('user');
+      
+      if (token && userJson) {
+        const user = JSON.parse(userJson);
+        setRole(user.role || 'elderly');
         setIsLoggedIn(true);
       }
     } catch (error) {
@@ -86,12 +122,14 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator 
       screenOptions={{ headerShown: false }}
-      initialRouteName={isLoggedIn ? "Main" : "Login"}
+      initialRouteName={isLoggedIn ? (role === 'caretaker' ? "CaretakerMain" : "Main") : "Login"}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen name="FaceLogin" component={FaceLoginScreen} />
       <Stack.Screen name="Main" component={MainTabs} />
+      <Stack.Screen name="CaretakerMain" component={CaretakerTabs} />
+      <Stack.Screen name="MedicineAlarm" component={MedicineAlarmScreen} />
     </Stack.Navigator>
   );
-}
+}

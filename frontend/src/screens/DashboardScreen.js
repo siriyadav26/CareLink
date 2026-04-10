@@ -1,44 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  TouchableOpacity, ActivityIndicator,
+  TouchableOpacity, ActivityIndicator, Alert, Platform,
 } from 'react-native';
-import { useAccessibility } from '../context/AccessibilityContext';
+import { useAccessibility, COLORS, neu } from '../context/AccessibilityContext';
 import { moodAPI, gameAPI } from '../services/api';
 import MoodChart from '../components/MoodChart';
 import { Ionicons } from '@expo/vector-icons';
 
-const COLORS = {
-  bg: '#f0edf6',
-  surface: '#ece8f3',
-  raised: '#f7f4fc',
-  orchid: '#9b72cf',
-  lavender: '#b39ddb',
-  iris: '#7c6bc4',
-  lilac: '#d1c4e9',
-  textPrimary: '#3d2c6e',
-  textSecondary: '#8b7ab8',
-  shadow: '#c8c0dc',
-  highlight: '#ffffff',
-  success: '#a8d8b9',
+const moodEmoji = {
+  '😊 Happy': '😊',
+  '😐 Neutral': '😐',
+  '😔 Sad': '😔',
+  '😴 Tired': '😴',
+  '💪 Strong': '💪',
 };
 
-const neu = (d = 6) => ({
-  shadowColor: COLORS.shadow,
-  shadowOffset: { width: d, height: d },
-  shadowOpacity: 0.5,
-  shadowRadius: d * 1.5,
-  elevation: d,
-});
-
-const moodEmoji = { '😊 Happy': '😊', '😐 Neutral': '😐', '😔 Sad': '😔', '😴 Tired': '😴', '💪 Strong': '💪' };
 const moodColors = {
-  '😊 Happy': '#f9c6d0', '😐 Neutral': '#d1c4e9',
-  '😔 Sad': '#b3c6f7', '😴 Tired': '#c8e6c9', '💪 Strong': '#ffe0b2',
+  '😊 Happy': '#e8f5e9',
+  '😐 Neutral': '#fff8e1',
+  '😔 Sad': '#e3f2fd',
+  '😴 Tired': '#f3e5f5',
+  '💪 Strong': '#fce4ec',
 };
+
 
 export default function DashboardScreen() {
-  const { theme, fontSize, titleSize, headingSize, speak } = useAccessibility();
+  const { theme, fontSize, titleSize, headingSize, speak, registerElement } = useAccessibility();
   const [moodData, setMoodData] = useState([]);
   const [gameStats, setGameStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -49,19 +37,62 @@ export default function DashboardScreen() {
   const loadData = async () => {
     try {
       const [moodsRes, statsRes] = await Promise.all([moodAPI.getAll(), gameAPI.getStats()]);
-      setMoodData(moodsRes.data);
+      const moods = moodsRes.data;
+      setMoodData(moods);
       setGameStats(statsRes.data);
+
+      // Check if any mood was submitted today (local date string)
+      const today = new Date().toISOString().split('T')[0];
+      const todayEntry = moods.find(m => m.dayString === today);
+      if (todayEntry) setTodayMood(todayEntry.mood);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
 
   const submitMood = async (mood) => {
+    const today = new Date().toISOString().split('T')[0];
+
+    if (todayMood) {
+      if (Platform.OS === 'web') {
+        window.alert('Already Submitted: Please come back next day to record your mood!');
+      } else {
+        Alert.alert(
+          'Already Submitted',
+          'Please come back next day to record your mood!',
+          [{ text: 'OK' }]
+        );
+      }
+      return;
+    }
+
     try {
-      await moodAPI.create({ mood, date: new Date() });
+      await moodAPI.create({ mood, dayString: today });
       setTodayMood(mood);
       loadData();
       speak(`You're feeling ${mood}`);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      const msg = e.response?.data?.message || 'Could not save mood';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Error', msg);
+    }
+  };
+
+  const handleReset = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await moodAPI.resetToday(today);
+      setTodayMood(null);
+      loadData();
+      const msg = 'Today\'s mood has been reset for demo';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Success', msg);
+    } catch (e) {
+      console.error(e);
+      const msg = 'Failed to reset mood';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Error', msg);
+    }
   };
 
   const moodOptions = ['😊 Happy', '😐 Neutral', '😔 Sad', '😴 Tired', '💪 Strong'];
@@ -103,29 +134,47 @@ export default function DashboardScreen() {
           <Text style={[styles.cardTitle, { fontSize: headingSize }]}>How are you feeling?</Text>
         </View>
         <View style={styles.moodGrid}>
-          {moodOptions.map((mood) => (
-            <TouchableOpacity
-              key={mood}
-              style={[
-                styles.moodChip,
-                { backgroundColor: todayMood === mood ? moodColors[mood] : COLORS.surface },
-                todayMood === mood && styles.moodChipActive,
-              ]}
-              onPress={() => submitMood(mood)}
-              activeOpacity={0.8}
-              accessibilityLabel={`Mood: ${mood}`}
-            >
-              <Text style={{ fontSize: fontSize + 10 }}>{moodEmoji[mood]}</Text>
-              <Text style={[styles.moodLabel, {
-                fontSize: fontSize - 2,
-                color: todayMood === mood ? COLORS.textPrimary : COLORS.textSecondary,
-                fontWeight: todayMood === mood ? '700' : '500',
-              }]}>
-                {mood.split(' ').slice(1).join(' ')}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {moodOptions.map((mood) => {
+            const label = `Mood: ${mood.split(' ').slice(1).join(' ')}`;
+            return (
+              <TouchableOpacity
+                key={mood}
+                style={[
+                  styles.moodChip,
+                  { backgroundColor: todayMood === mood ? moodColors[mood] : COLORS.surface },
+                  todayMood === mood && styles.moodChipActive,
+                ]}
+                onPress={() => submitMood(mood)}
+                onLayout={(e) => {
+                  e.target.measureInWindow((x, y, width, height) => {
+                    if (width > 0) registerElement(`mood-${mood}`, { x, y, width, height }, label);
+                  });
+                }}
+                activeOpacity={0.8}
+                accessibilityLabel={label}
+              >
+                <Text style={{ fontSize: fontSize + 10 }}>{moodEmoji[mood]}</Text>
+                <Text style={[styles.moodLabel, {
+                  fontSize: fontSize - 2,
+                  color: todayMood === mood ? COLORS.textPrimary : COLORS.textSecondary,
+                  fontWeight: todayMood === mood ? '700' : '500',
+                }]}>
+                  {mood.split(' ').slice(1).join(' ')}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
+
+        {/* Demo Reset Button */}
+        <TouchableOpacity
+          style={styles.demoResetBtn}
+          onPress={handleReset}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="refresh" size={14} color={COLORS.orchid} style={{ marginRight: 6 }} />
+          <Text style={styles.demoResetText}>Reset Today (Demo Only)</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Mood chart */}
@@ -269,4 +318,19 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.orchid,
   },
   insightText: { color: COLORS.textPrimary, fontStyle: 'italic', lineHeight: 20 },
+
+  demoResetBtn: {
+    marginTop: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  demoResetText: {
+    color: COLORS.orchid,
+    fontWeight: '600',
+    fontSize: 12,
+  },
 });

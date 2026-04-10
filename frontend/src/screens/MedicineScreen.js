@@ -15,6 +15,7 @@ const COLORS = {
   orchid: '#9b72cf', lavender: '#b39ddb', iris: '#7c6bc4',
   lilac: '#d1c4e9', textPrimary: '#3d2c6e', textSecondary: '#8b7ab8',
   shadow: '#c8c0dc', highlight: '#ffffff',
+  danger: '#ff8a80',
 };
 const neu = (d = 6) => ({
   shadowColor: COLORS.shadow, shadowOffset: { width: d, height: d },
@@ -28,34 +29,121 @@ export default function MedicineScreen() {
   const [medicines, setMedicines] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [formData, setFormData] = useState({
     name: '', dosage: '', time: '09:00',
     days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
   });
 
-  useEffect(() => { loadMedicines(); }, []);
+  useEffect(() => { 
+    loadMedicines(); 
+  }, []);
 
+  // ── Loads data from DB only (does NOT touch OS alarms) ─────────────────
   const loadMedicines = async () => {
     try {
       const response = await medicineAPI.getAll();
-      setMedicines(response.data);
-    } catch (e) { console.error(e); }
+      const meds = response.data;
+      setMedicines(meds);
+      return meds; // Return for use by rescheduleAllAlarms
+    } catch (e) { 
+      console.error('Load Error:', e.message);
+      return [];
+    }
+  };
+
+  // ── NUCLEAR RESCHEDULE: Wipe ALL OS alarms first, then rebuild from DB ──
+  // This is the ONLY way to guarantee no zombie alarms exist.
+  const rescheduleAllAlarms = async (medsOverride) => {
+    console.log('🧹 V18 Wiping ALL OS alarms before rescheduling...');
+    await notificationService.wipeAllLocalAlarms();
+    const meds = medsOverride || await loadMedicines();
+    let scheduled = 0;
+    for (const med of meds) {
+      if (!med.takenToday) {
+        try {
+          await notificationService.scheduleMedicineReminder(med._id, med.name, med.dosage, med.time);
+          scheduled++;
+          console.log(`✅ V18 Scheduled: ${med.name} at ${med.time}`);
+        } catch (e) {
+          console.warn(`⚠️ Could not schedule ${med.name}:`, e.message);
+        }
+      }
+    }
+    console.log(`🎯 V18 Reschedule complete: ${scheduled} alarms active.`);
+    return meds;
+  };
+
+  const handleGlobalSync = async () => {
+    setIsSyncing(true);
+    try {
+      speak('Starting global alarm sync. Cleaning old notifications.');
+      const meds = await loadMedicines();
+      await rescheduleAllAlarms(meds);
+      setMedicines(meds);
+      Alert.alert('✅ Sync Complete', `All alarms wiped and re-scheduled from scratch.\nActive alarms: ${meds.filter(m => !m.takenToday).length}`);
+    } catch (e) {
+      Alert.alert('Sync Error', e.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const saveMedicine = async () => {
-    if (!formData.name || !formData.dosage) { Alert.alert('Missing fields', 'Please fill all fields'); return; }
+    if (!formData.name.trim() || !formData.dosage.trim()) { 
+      Alert.alert('Missing Fields', 'Please enter both a medicine name and dosage.'); 
+      return; 
+    }
+    if (!formData.time || !formData.time.includes(':')) {
+      Alert.alert('Missing Fields', 'Please select a valid alarm time.');
+      return;
+    }
+    
+    let savedMed = null;
+    
+    // ── Step 1: Save to DB (always runs) ────────────────────────────────
     try {
+      console.log('📤 V18 Saving Medicine to DB:', JSON.stringify(formData));
       if (editingMedicine) {
-        await medicineAPI.update(editingMedicine._id, formData);
-        await notificationService.cancelReminder(editingMedicine._id);
+        const response = await medicineAPI.update(editingMedicine._id, formData);
+        savedMed = response.data;
+        // Cancel old alarm before scheduling new one
+        await notificationService.cancelReminder(editingMedicine._id).catch(() => {});
       } else {
-        await medicineAPI.create(formData);
+        const response = await medicineAPI.create(formData);
+        savedMed = response.data.medicine;
       }
-      await loadMedicines();
-      setModalVisible(false);
-      resetForm();
-      speak('Medicine saved successfully');
-    } catch { Alert.alert('Error', 'Failed to save medicine'); }
+    } catch (e) { 
+      const errMsg = e.response?.data?.message || e.message || 'Unknown error';
+      const status = e.response?.status || 'No response';
+      console.error(`❌ DB Save Error [HTTP ${status}]:`, errMsg);
+      Alert.alert('Save Failed', `Could not save medicine.\nHTTP ${status}: ${errMsg}`);
+      return; // Stop here — only show error if DB save actually failed
+    }
+
+    // ── Step 2: NUCLEAR reschedule — wipe ALL OS alarms and rebuild ──────
+    // This guarantees NO zombie alarms from previous failed saves or stale schedules
+    try {
+      // First reload so we get the full fresh list including the just-saved medicine
+      const freshMeds = await loadMedicines();
+      await rescheduleAllAlarms(freshMeds);
+      setMedicines(freshMeds);
+      if (savedMed) await notificationService.notifyAdded(savedMed.name);
+    } catch (notifErr) {
+      // Alarm scheduling failed, but medicine IS saved — just warn
+      console.warn('⚠️ Alarm scheduling failed (but medicine was saved):', notifErr.message);
+      const freshMeds = await loadMedicines();
+      setMedicines(freshMeds);
+      Alert.alert(
+        'Medicine Saved ✅',
+        `${savedMed?.name || 'Medicine'} was saved but the alarm could not be scheduled.\nTap the sync button (🔄) to retry.`
+      );
+    }
+
+    // ── Step 3: Close modal ──────────────────────────────────────────────
+    setModalVisible(false);
+    resetForm();
+    speak('Medicine saved. All alarms refreshed.');
   };
 
   const resetForm = () => {
@@ -64,7 +152,7 @@ export default function MedicineScreen() {
   };
 
   const handleDelete = async (id) => {
-    Alert.alert('Delete Medicine', 'Are you sure you want to remove this?', [
+    Alert.alert('Delete Medicine', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
@@ -90,12 +178,16 @@ export default function MedicineScreen() {
         {/* Header */}
         <View style={styles.pageHeader}>
           <View>
-            <Text style={styles.pageEyebrow}>Your Schedule</Text>
+            <Text style={styles.pageEyebrow}>V17.1 IMMORTAL SYNC</Text>
             <Text style={[styles.pageTitle, { fontSize: headingSize + 4 }]}>Medicines</Text>
           </View>
-          <View style={styles.headerBadge}>
-            <Text style={styles.headerBadgeText}>{medicines.length}</Text>
-          </View>
+          <TouchableOpacity 
+            style={[styles.syncBtn, isSyncing && { opacity: 0.5 }]} 
+            onPress={handleGlobalSync}
+            disabled={isSyncing}
+          >
+            <Ionicons name="sync" size={24} color={COLORS.orchid} />
+          </TouchableOpacity>
         </View>
 
         {/* Add button */}
@@ -103,13 +195,11 @@ export default function MedicineScreen() {
           style={styles.addBtn}
           onPress={() => setModalVisible(true)}
           activeOpacity={0.85}
-          accessibilityLabel="Add new medicine"
         >
           <View style={styles.addBtnIcon}>
             <Ionicons name="add" size={22} color={COLORS.highlight} />
           </View>
           <Text style={[styles.addBtnText, { fontSize }]}>Add New Medicine</Text>
-          <Ionicons name="chevron-forward" size={18} color={COLORS.lavender} />
         </TouchableOpacity>
 
         {/* List */}
@@ -117,7 +207,6 @@ export default function MedicineScreen() {
           <View style={styles.emptyState}>
             <Text style={{ fontSize: 48, marginBottom: 12 }}>💊</Text>
             <Text style={styles.emptyTitle}>No medicines yet</Text>
-            <Text style={styles.emptySub}>Tap above to add your first reminder</Text>
           </View>
         ) : (
           medicines.map((medicine) => (
@@ -138,104 +227,69 @@ export default function MedicineScreen() {
         )}
       </ScrollView>
 
-      {/* Modal */}
+      {/* Modal Container */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            {/* Handle */}
             <View style={styles.modalHandle} />
-
             <Text style={[styles.modalTitle, { fontSize: headingSize }]}>
               {editingMedicine ? '✏️ Edit Medicine' : '💊 Add Medicine'}
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Name */}
               <View style={styles.fieldWrap}>
-                <Text style={[styles.fieldLabel, { fontSize: fontSize - 3 }]}>Medicine Name</Text>
+                <Text style={styles.fieldLabel}>Name</Text>
                 <View style={styles.inputRow}>
-                  <Ionicons name="medkit-outline" size={17} color={COLORS.textSecondary} style={{ marginRight: 10 }} />
                   <TextInput
-                    style={[styles.inputText, { fontSize, color: COLORS.textPrimary }]}
-                    placeholder="e.g. Aspirin"
-                    placeholderTextColor={COLORS.textSecondary}
+                    style={[styles.inputText, { fontSize }]}
+                    placeholder="Medicine Name"
                     value={formData.name}
                     onChangeText={(text) => setFormData({ ...formData, name: text })}
                   />
                 </View>
               </View>
 
-              {/* Dosage */}
               <View style={styles.fieldWrap}>
-                <Text style={[styles.fieldLabel, { fontSize: fontSize - 3 }]}>Dosage</Text>
+                <Text style={styles.fieldLabel}>Dosage</Text>
                 <View style={styles.inputRow}>
-                  <Ionicons name="water-outline" size={17} color={COLORS.textSecondary} style={{ marginRight: 10 }} />
                   <TextInput
-                    style={[styles.inputText, { fontSize, color: COLORS.textPrimary }]}
-                    placeholder="e.g. 1 tablet"
-                    placeholderTextColor={COLORS.textSecondary}
+                    style={[styles.inputText, { fontSize }]}
+                    placeholder="e.g. 1 Tablet"
                     value={formData.dosage}
                     onChangeText={(text) => setFormData({ ...formData, dosage: text })}
                   />
                 </View>
               </View>
 
-              {/* Time */}
               <View style={styles.fieldWrap}>
-                <Text style={[styles.fieldLabel, { fontSize: fontSize - 3 }]}>
-                  Time — <Text style={{ color: COLORS.orchid, fontWeight: '700' }}>{formData.time}</Text>
-                </Text>
+                <Text style={styles.fieldLabel}>Time: {formData.time}</Text>
                 <View style={[styles.inputRow, { justifyContent: 'center' }]}>
                   <DateTimePicker
-                    value={new Date(`2000-01-01T${formData.time}:00`)}
+                    value={(() => {
+                      const [hh, mm] = (formData.time || '09:00').split(':');
+                      const d = new Date();
+                      d.setHours(parseInt(hh) || 9, parseInt(mm) || 0, 0, 0);
+                      return d;
+                    })()}
                     mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    display="spinner"
                     onChange={(event, selectedDate) => {
-                      if (selectedDate) {
-                        const h = selectedDate.getHours().toString().padStart(2, '0');
-                        const m = selectedDate.getMinutes().toString().padStart(2, '0');
-                        setFormData({ ...formData, time: `${h}:${m}` });
-                      }
+                      // On Android, event.type is 'dismissed' if user cancelled - don't update
+                      if (event.type === 'dismissed' || !selectedDate) return;
+                      const h = selectedDate.getHours().toString().padStart(2, '0');
+                      const m = selectedDate.getMinutes().toString().padStart(2, '0');
+                      setFormData(prev => ({ ...prev, time: `${h}:${m}` }));
                     }}
                   />
                 </View>
               </View>
 
-              {/* Days */}
-              <View style={styles.fieldWrap}>
-                <Text style={[styles.fieldLabel, { fontSize: fontSize - 3 }]}>Repeat on</Text>
-                <View style={styles.daysRow}>
-                  {weekDays.map((day) => (
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.dayChip, formData.days.includes(day) && styles.dayChipActive]}
-                      onPress={() => toggleDay(day)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.dayText, {
-                        fontSize: fontSize - 2,
-                        color: formData.days.includes(day) ? COLORS.highlight : COLORS.textSecondary,
-                        fontWeight: formData.days.includes(day) ? '700' : '500',
-                      }]}>
-                        {day}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Actions */}
               <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => { setModalVisible(false); resetForm(); }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.cancelBtnText, { fontSize }]}>Cancel</Text>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setModalVisible(false); resetForm(); }}>
+                  <Text style={styles.cancelBtnText}>Back</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.saveBtn} onPress={saveMedicine} activeOpacity={0.85}>
-                  <Text style={[styles.saveBtnText, { fontSize }]}>Save</Text>
-                  <Ionicons name="checkmark" size={18} color={COLORS.highlight} />
+                <TouchableOpacity style={styles.saveBtn} onPress={saveMedicine}>
+                  <Text style={styles.saveBtnText}>Save Alarm</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -248,69 +302,27 @@ export default function MedicineScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  content: { padding: 24, paddingBottom: 48 },
-
-  pageHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, marginTop: 8 },
-  pageEyebrow: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
-  pageTitle: { fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5 },
-  headerBadge: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.lilac, justifyContent: 'center', alignItems: 'center', ...neu(4),
-  },
-  headerBadgeText: { fontSize: 16, fontWeight: '800', color: COLORS.orchid },
-
-  addBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: 20, padding: 18, marginBottom: 24, gap: 14, ...neu(6),
-  },
-  addBtnIcon: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: COLORS.iris, justifyContent: 'center', alignItems: 'center', ...neu(4),
-  },
-  addBtnText: { flex: 1, fontWeight: '700', color: COLORS.textPrimary },
-
-  emptyState: { alignItems: 'center', paddingVertical: 48 },
-  emptyTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 6 },
-  emptySub: { fontSize: 13, color: COLORS.textSecondary },
-
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(61,44,110,0.25)' },
-  modalSheet: {
-    backgroundColor: COLORS.bg, borderTopLeftRadius: 32, borderTopRightRadius: 32,
-    padding: 28, paddingBottom: 48, maxHeight: '92%',
-    shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: -8 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 20,
-  },
-  modalHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: COLORS.lilac, alignSelf: 'center', marginBottom: 20,
-  },
-  modalTitle: { fontWeight: '800', color: COLORS.textPrimary, textAlign: 'center', marginBottom: 28, letterSpacing: -0.3 },
-
+  content: { padding: 24 },
+  pageHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  pageEyebrow: { fontSize: 10, color: COLORS.textSecondary, fontWeight: '700', letterSpacing: 1 },
+  pageTitle: { fontWeight: '900', color: COLORS.textPrimary },
+  syncBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center', ...neu(4) },
+  addBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, borderRadius: 20, padding: 18, marginBottom: 24, gap: 14, ...neu(6) },
+  addBtnIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.iris, justifyContent: 'center', alignItems: 'center' },
+  addBtnText: { fontWeight: '700', color: COLORS.textPrimary },
+  emptyState: { alignItems: 'center', paddingVertical: 50 },
+  emptyTitle: { color: COLORS.textSecondary, fontWeight: '600' },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet: { backgroundColor: COLORS.bg, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, maxHeight: '90%' },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: COLORS.lilac, alignSelf: 'center', marginBottom: 20 },
+  modalTitle: { fontWeight: '900', color: COLORS.textPrimary, textAlign: 'center', marginBottom: 25 },
   fieldWrap: { marginBottom: 20 },
-  fieldLabel: { color: COLORS.textSecondary, fontWeight: '600', marginBottom: 8, letterSpacing: 0.5, textTransform: 'uppercase' },
-  inputRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.surface, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4, ...neu(4),
-  },
-  inputText: { flex: 1, paddingVertical: 13, fontWeight: '500' },
-
-  daysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  dayChip: {
-    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12,
-    backgroundColor: COLORS.surface, ...neu(3),
-  },
-  dayChipActive: { backgroundColor: COLORS.iris },
-  dayText: {},
-
-  modalActions: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  cancelBtn: {
-    flex: 1, paddingVertical: 16, borderRadius: 18,
-    backgroundColor: COLORS.surface, alignItems: 'center', ...neu(4),
-  },
+  fieldLabel: { color: COLORS.textSecondary, fontWeight: '700', marginBottom: 8, fontSize: 12, textTransform: 'uppercase' },
+  inputRow: { backgroundColor: COLORS.surface, borderRadius: 15, paddingHorizontal: 15, paddingVertical: 5, ...neu(3) },
+  inputText: { paddingVertical: 10, color: COLORS.textPrimary },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  cancelBtn: { flex: 1, padding: 15, borderRadius: 15, backgroundColor: COLORS.surface, alignItems: 'center' },
   cancelBtnText: { color: COLORS.textSecondary, fontWeight: '700' },
-  saveBtn: {
-    flex: 2, flexDirection: 'row', paddingVertical: 16, borderRadius: 18,
-    backgroundColor: COLORS.iris, alignItems: 'center', justifyContent: 'center', gap: 8, ...neu(5),
-  },
-  saveBtnText: { color: COLORS.highlight, fontWeight: '700' },
+  saveBtn: { flex: 2, padding: 15, borderRadius: 15, backgroundColor: COLORS.iris, alignItems: 'center' },
+  saveBtnText: { color: 'white', fontWeight: '800' },
 });

@@ -8,18 +8,24 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-module.exports.sendEmail = async (to, subject, text) => {
+/**
+ * Send an email alert to the caretaker
+ * @param {string} to - Caretaker email address
+ * @param {string} subject - Email subject
+ * @param {string} html - HTML content of the email
+ */
+exports.sendEmail = async (to, subject, html) => {
   try {
     const info = await transporter.sendMail({
       from: `"CareLink AI" <${process.env.EMAIL_USER}>`,
       to,
       subject,
-      text,
+      html,
     });
-    console.log("📧 Email sent:", info.messageId);
+    console.log('Message sent: %s', info.messageId);
     return info;
   } catch (error) {
-    console.error("❌ Email failed:", error);
+    console.error('Error sending email:', error);
     throw error;
   }
 };

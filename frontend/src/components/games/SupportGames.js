@@ -40,7 +40,7 @@ export function LargeIconTap({ onComplete, onBack, theme, fontSize }) {
 }
 
 export function VisualRhythm({ onComplete, onBack, theme, fontSize }) {
-  const scrollAnim = useRef(new Animated.Value(0)).current;
+  const scrollAnim = React.useRef(new Animated.Value(0)).current;
   const [score, setScore] = useState(0);
 
   useEffect(() => {

@@ -5,32 +5,24 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
 
 export const notificationService = {
+  // 🎯 [V17.1] IMMORTAL ALARM ENGINE
+  
   registerForPushNotifications: async () => {
-    if (!Device.isDevice) {
-      console.log('Must use physical device for push notifications');
-      return;
-    }
-
+    if (!Device.isDevice) return;
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
-      return;
-    }
+    if (finalStatus !== 'granted') return;
 
-    const token = (await Notifications.getExpoPushTokenAsync()).data;
-    await AsyncStorage.setItem('expoPushToken', token);
-
-    // Send token to backend
     try {
-      await api.post('/auth/push-token', { token });
-    } catch (error) {
-      console.log('Error saving push token:', error);
-    }
+      const tokenResponse = await Notifications.getExpoPushTokenAsync();
+      const token = tokenResponse.data;
+      await AsyncStorage.setItem('expoPushToken', token);
+      await api.post('/auth/push-token', { token }).catch(() => {});
+    } catch (error) {}
 
     if (Platform.OS !== 'web') {
       Notifications.setNotificationChannelAsync('default', {
@@ -42,31 +34,112 @@ export const notificationService = {
     }
   },
 
-  scheduleMedicineReminder: async (id, title, body, time) => {
-    const [hours, minutes] = time.split(':');
-    const trigger = new Date();
-    trigger.setHours(parseInt(hours), parseInt(minutes), 0);
-    if (trigger < new Date()) {
-      trigger.setDate(trigger.getDate() + 1);
+  scheduleMedicineReminder: async (id, name, dosage, time) => {
+    // 🎯 [V17.1] HARDENED CALENDAR TRIGGER
+    try {
+      await Notifications.cancelScheduledNotificationAsync(`medicine-${id}`).catch(() => {});
+
+      if (!time || !time.includes(':')) {
+        console.error(`❌ [V17.1] Invalid time format for ${name}: ${time}`);
+        return;
+      }
+
+      const [hours, minutes] = time.split(':');
+      const h = parseInt(hours);
+      const m = parseInt(minutes);
+
+      if (isNaN(h) || isNaN(m)) {
+        console.error(`❌ [V17.1] Time parsing failed for ${name}: ${time}`);
+        return;
+      }
+
+      console.log(`🎯 [V17.1] OS CALENDAR SYNC: ${name} at ${h}:${m}`);
+
+      await Notifications.setNotificationCategoryAsync('medication', [
+        { identifier: 'taken', buttonTitle: 'I\'ve Taken It', options: { isDestructive: false } },
+        { identifier: 'snooze', buttonTitle: 'Snooze (5m)', options: { isDestructive: false } },
+      ]);
+
+      await Notifications.scheduleNotificationAsync({
+        identifier: `medicine-${id}`,
+        content: {
+          title: 'MEDICATION ALARM',
+          body: `It's time to take your medicine: ${name}`,
+          data: { 
+            type: 'medication_alarm', 
+            medicineId: id, 
+            name, 
+            dosage,
+            scheduledAt: Date.now() 
+          },
+          categoryIdentifier: 'medication',
+          sound: true,
+          priority: Notifications.AndroidNotificationPriority.MAX,
+        },
+        trigger: {
+          hour: h,
+          minute: m,
+          repeats: true, 
+          channelId: 'default',
+        },
+      });
+    } catch (e) {
+      console.error('❌ [V17.1] Scheduling error:', e.message);
+      throw e;
     }
+  },
+
+  snoozeMedicineReminder: async (id, name, dosage) => {
+    console.log(`⏰ [V17.1] Snoozing ${name} for 5 minutes (Local Precision)`);
     await Notifications.scheduleNotificationAsync({
-      identifier: `medicine-${id}`,
-      content: { title, body, data: { medicineId: id } },
-      trigger,
+      identifier: `medicine-${id}-snooze`,
+      content: {
+        title: '⏰ SNOOZED ALARM',
+        body: `Snoozed: Time to take your ${name}`,
+        data: { 
+          type: 'medication_alarm', 
+          medicineId: id, 
+          name, 
+          dosage,
+          scheduledAt: Date.now() 
+        },
+        categoryIdentifier: 'medication',
+        sound: true,
+      },
+      trigger: {
+        seconds: 300, 
+        repeats: false,
+        channelId: 'default',
+      },
     });
   },
 
-  cancelReminder: async (id) => {
-    await Notifications.cancelScheduledNotificationAsync(`medicine-${id}`);
+  wipeAllLocalAlarms: async () => {
+    console.log('🧹 [V17.1] GLOBAL ALARM RESET: Wiping phone OS notification memory...');
+    await Notifications.cancelAllScheduledNotificationsAsync();
   },
 
-  snoozeMedicineReminder: async (id, title, body) => {
-    const trigger = new Date();
-    trigger.setMinutes(trigger.getMinutes() + 10); // Snooze for 10 minutes
+  cancelReminder: async (id) => {
+    await Notifications.cancelScheduledNotificationAsync(`medicine-${id}`).catch(() => {});
+    await Notifications.cancelScheduledNotificationAsync(`medicine-${id}-snooze`).catch(() => {});
+  },
+
+  notifyAdded: async (name) => {
     await Notifications.scheduleNotificationAsync({
-      identifier: `medicine-${id}-snooze`,
-      content: { title: `Snoozed: ${title}`, body, data: { medicineId: id } },
-      trigger,
+      content: {
+        title: '✅ Medicine Added',
+        body: `${name} has been scheduled.`,
+        sound: true,
+        data: { type: 'medicine_confirmation' }, // NOT a medication_alarm type
+      },
+      trigger: null,
+    });
+  },
+
+  notifyCustom: async (title, body) => {
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: true, data: { type: 'general_notification' } },
+      trigger: null,
     });
   },
 };

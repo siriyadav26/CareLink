@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const moodEntrySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   mood: { type: String, required: true },
+  dayString: { type: String, required: true }, // Format: YYYY-MM-DD
   date: { type: Date, default: Date.now },
 });
 

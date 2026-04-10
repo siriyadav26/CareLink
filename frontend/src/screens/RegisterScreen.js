@@ -3,21 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, Alert, ScrollView,
 } from 'react-native';
-import { useAccessibility } from '../context/AccessibilityContext';
+import { useAccessibility, COLORS, neu } from '../context/AccessibilityContext';
 import { authAPI } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-
-const COLORS = {
-  bg: '#f0edf6', surface: '#ece8f3', raised: '#f7f4fc',
-  orchid: '#9b72cf', lavender: '#b39ddb', iris: '#7c6bc4',
-  lilac: '#d1c4e9', textPrimary: '#3d2c6e', textSecondary: '#8b7ab8',
-  shadow: '#c8c0dc', highlight: '#ffffff',
-};
-const neu = (d = 6) => ({
-  shadowColor: COLORS.shadow, shadowOffset: { width: d, height: d },
-  shadowOpacity: 0.5, shadowRadius: d * 1.5, elevation: d,
-});
 
 const InputField = ({ icon, label, fontSize, ...props }) => (
   <View style={regStyles.fieldWrap}>
@@ -54,7 +43,15 @@ export default function RegisterScreen({ navigation }) {
       await AsyncStorage.setItem('token', response.data.token);
       await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
       // Redirect to Face Setup instead of Dashboard
-      navigation.replace('Main');
+      const user = response.data.user;
+      await AsyncStorage.setItem('token', response.data.token);
+      await AsyncStorage.setItem('user', JSON.stringify(user));
+      
+      if (user.role === 'caretaker') {
+        navigation.replace('CaretakerMain');
+      } else {
+        navigation.replace('Main');
+      }
     } catch (error) {
       Alert.alert('Registration Failed', error.response?.data?.message || 'Something went wrong');
     } finally { setLoading(false); }

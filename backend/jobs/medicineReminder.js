@@ -2,56 +2,51 @@ const cron = require('node-cron');
 const Medicine = require('../models/Medicine');
 const User = require('../models/User');
 const { sendPushNotification } = require('../utils/pushService');
-const { sendSMS } = require('../utils/smsService');
+const { sendEmail } = require('../utils/emailService');
 
-async function checkMissedMedicines() {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTime = `${currentHour.toString().padStart(2, '0')}:${currentMinute.toString().padStart(2, '0')}`;
-  const currentDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getDay()];
+async function checkMedicines() {
+  try {
+    const now = new Date();
+    const currentDay = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getDay()];
+    const currentH = now.getHours().toString().padStart(2, '0');
+    const currentM = now.getMinutes().toString().padStart(2, '0');
+    const currTimeStr = `${currentH}:${currentM}`;
 
-  const medicines = await Medicine.find({
-    time: currentTime,
-    days: currentDay,
-    takenToday: false,
-  }).populate('userId');
+    // 🎯 [V17] LOCAL TRUTH MODE: Alarms are now scheduled on the Phone.
+    // The backend ONLY handles caretaker alerts for missed doses.
+    
+    // 1. Send Caretaker Alerts for Missed Doses (30 minutes late)
+    const thirtyAgo = new Date(now.getTime() - 30 * 60 * 1000);
+    const lateTime = `${thirtyAgo.getHours().toString().padStart(2, '0')}:${thirtyAgo.getMinutes().toString().padStart(2, '0')}`;
 
-  for (const medicine of medicines) {
-    // Safety check for populated user
-    if (!medicine.userId) {
-      console.warn(`⚠️ Skipping reminder for medicine ${medicine._id}: No user found.`);
-      continue;
+    const missed = await Medicine.find({
+      time: lateTime,
+      days: currentDay,
+      takenToday: false
+    }).populate('userId');
+
+    for (const med of missed) {
+      if (med?.userId && med.userId.emergencyEmails?.length > 0) {
+        console.log(`⚠️ Missed Dose: Alerting caregivers for ${med.name}`);
+        const emailHtml = `<div><h2>⚠️ CareLink Alert: Missed Medicine</h2><p>${med.userId.name} missed their scheduled dose of ${med.name}.</p></div>`;
+        for (const email of med.userId.emergencyEmails) {
+          if (email) await sendEmail(email, `URGENT: Medication missed`, emailHtml).catch(() => {});
+        }
+      }
     }
 
-    // Send reminder to elderly user
-    await sendPushNotification(
-      medicine.userId._id,
-      'Medicine Reminder',
-      `It's time to take ${medicine.name} (${medicine.dosage})`
-    );
+    if (currTimeStr === '00:00') {
+      await Medicine.updateMany({}, { takenToday: false, alertSentForToday: false });
+    }
 
-    // If medicine not taken within 30 minutes, alert caretaker
-    setTimeout(async () => {
-      const updatedMedicine = await Medicine.findById(medicine._id);
-      if (!updatedMedicine.takenToday) {
-        const user = await User.findById(medicine.userId._id);
-        if (user && user.caretakerPhone) {
-          await sendSMS(
-            user.caretakerPhone,
-            `ALERT: ${user.name} has not taken ${medicine.name} (${medicine.dosage}) at ${medicine.time}`
-          );
-        }
-        await sendPushNotification(medicine.userId._id, 'Missed Medicine', `You missed ${medicine.name}. Please take it now.`);
-      }
-    }, 30 * 60 * 1000);
+  } catch (err) {
+    console.error('❌ [V17] CRON ERROR:', err);
   }
 }
 
 exports.startMedicineReminderJob = () => {
-  // Run every minute
   cron.schedule('* * * * *', () => {
-    checkMissedMedicines().catch(console.error);
+    checkMedicines().catch(e => console.error('❌ [V17] Execution Error:', e));
   });
-  console.log('Medicine reminder job started');
+  console.log('✅ [V17] Real Alarm Job Started (Caretaker Mode)');
 };

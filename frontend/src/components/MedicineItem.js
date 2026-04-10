@@ -23,7 +23,7 @@ export default function MedicineItem({ medicine, onEdit, onDelete, onRefresh, th
       await notificationService.snoozeMedicineReminder(
         medicine._id,
         medicine.name,
-        `Don't forget to take ${medicine.name} (${medicine.dosage})`
+        medicine.dosage
       );
       Alert.alert('Snoozed', 'Reminder delayed by 10 minutes');
     } catch (error) {

@@ -1,39 +1,41 @@
 import React from 'react';
-import { View, Text, Switch, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, Switch, TouchableOpacity, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAccessibility } from '../context/AccessibilityContext';
+import { useAccessibility, COLORS, neu } from '../context/AccessibilityContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const COLORS = {
-  bg: '#f0edf6', surface: '#ece8f3', raised: '#f7f4fc',
-  orchid: '#9b72cf', lavender: '#b39ddb', iris: '#7c6bc4',
-  lilac: '#d1c4e9', textPrimary: '#3d2c6e', textSecondary: '#8b7ab8',
-  shadow: '#c8c0dc', highlight: '#ffffff', danger: '#e57373',
-};
-const neu = (d = 6) => ({
-  shadowColor: COLORS.shadow, shadowOffset: { width: d, height: d },
-  shadowOpacity: 0.5, shadowRadius: d * 1.5, elevation: d,
-});
 
 export default function SettingsScreen({ navigation }) {
   const {
-    soundEnabled, setSoundEnabled, highContrast, setHighContrast,
+    soundEnabled, setSoundEnabled,
     largeText, setLargeText, bigCursor, setBigCursor,
-    fontSize, headingSize, speak,
+    fontSize, headingSize, speak, registerElement,
   } = useAccessibility();
 
-  const handleLogout = async () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out', style: 'destructive', onPress: async () => {
-          await AsyncStorage.removeItem('token');
-          await AsyncStorage.removeItem('user');
-          navigation.replace('Login');
-          speak('You have been signed out');
-        }
-      },
-    ]);
+  const performSignOut = async () => {
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('user');
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      })
+    );
+    speak('You have been signed out');
+  };
+
+  const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to sign out?');
+      if (confirmed) {
+        performSignOut();
+      }
+    } else {
+      Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: performSignOut },
+      ]);
+    }
   };
 
   const accessibilitySettings = [
@@ -41,11 +43,6 @@ export default function SettingsScreen({ navigation }) {
       id: 'sound', icon: 'volume-high-outline', iconBg: '#e8eaf6',
       label: 'Voice Feedback', desc: 'Read aloud when touching elements',
       value: soundEnabled, onToggle: setSoundEnabled,
-    },
-    {
-      id: 'contrast', icon: 'contrast-outline', iconBg: '#fce4ec',
-      label: 'High Contrast', desc: 'Dark blue and white theme for better visibility',
-      value: highContrast, onToggle: setHighContrast,
     },
     {
       id: 'text', icon: 'text-outline', iconBg: '#f3e5f5',
@@ -75,7 +72,14 @@ export default function SettingsScreen({ navigation }) {
 
       <View style={styles.settingsCard}>
         {accessibilitySettings.map((item, index) => (
-          <View key={item.id}>
+          <View 
+            key={item.id}
+            onLayout={(e) => {
+              e.target.measureInWindow((x, y, width, height) => {
+                if (width > 0) registerElement(`setting-${item.id}`, { x, y, width, height }, item.label);
+              });
+            }}
+          >
             <View style={styles.settingRow}>
               <View style={[styles.settingIcon, { backgroundColor: item.iconBg }]}>
                 <Ionicons name={item.icon} size={18} color={COLORS.orchid} />

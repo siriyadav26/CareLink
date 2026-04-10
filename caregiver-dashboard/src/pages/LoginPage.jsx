@@ -17,8 +17,7 @@ const LoginPage = () => {
     setError('');
 
     try {
-      // Note: Use http://localhost:5000/api/auth/login based on backend findings
-      const response = await axios.post('http://localhost:5000/api/auth/login', formData);
+      const response = await axios.post('http://130.1.11.163:5000/api/auth/login', formData);
       
       const { user, token } = response.data;
       
