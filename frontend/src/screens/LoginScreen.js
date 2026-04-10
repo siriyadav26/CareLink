@@ -83,6 +83,7 @@ export default function LoginScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
 
+        {/* 
         <TouchableOpacity
           onPress={() => {
             navigation.navigate('FaceLogin', { email });
@@ -94,6 +95,7 @@ export default function LoginScreen({ navigation }) {
             Login with Face Recognition
           </Text>
         </TouchableOpacity>
+        */}
 
         <TouchableOpacity
           onPress={() => navigation.navigate('Register')}

@@ -47,7 +47,7 @@ export default function RegisterScreen({ navigation }) {
       await AsyncStorage.setItem('token', response.data.token);
       await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
       // Redirect to Face Setup instead of Dashboard
-      navigation.replace('FaceLogin', { mode: 'enroll', email: email });
+      navigation.replace('Main');
     } catch (error) {
       Alert.alert('Registration Failed', error.response?.data?.message || 'Something went wrong');
     } finally {

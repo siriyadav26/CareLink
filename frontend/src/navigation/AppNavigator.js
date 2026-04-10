@@ -86,7 +86,7 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator 
       screenOptions={{ headerShown: false }}
-      initialRouteName={isLoggedIn ? "Main" : "FaceLogin"}
+      initialRouteName={isLoggedIn ? "Main" : "Login"}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
