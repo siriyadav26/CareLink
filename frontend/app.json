@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "CareLink AI",
+    "slug": "carelink-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "../myApp/assets/images/icon.png",
+    "userInterfaceStyle": "light",
+    "host": "lan",
+    "splash": {
+      "image": "../myApp/assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A1929"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.elderlycare.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "../myApp/assets/images/android-icon-foreground.png",
+        "backgroundColor": "#0A1929"
+      },
+      "package": "com.elderlycare.app"
+    },
+    "web": {
+      "favicon": "../myApp/assets/images/favicon.png",
+      "notification": {
+        "vapidPublicKey": "BAnYF8q7_w_vK_T7PqD_v_G_H_J_L_M_N_O_P_Q_R_S_T_U_V_W_X_Y_Z"
+      }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "../myApp/assets/images/notification-icon (2).png",
+          "color": "#0A1929"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow CareLink AI to access your camera for face recognition login."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndInUsePermission": "Allow CareLink AI to access your location for emergency SOS."
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
