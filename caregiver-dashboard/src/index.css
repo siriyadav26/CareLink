@@ -1,17 +1,71 @@
+/* ── Palette ─────────────────────────────────────────────────── */
 :root {
-  --bg-primary: #0a0e14;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #21262d;
-  --text-primary: #f0f6fc;
-  --text-secondary: #8b949e;
-  --accent: #58a6ff;
-  --danger: #f85149;
-  --success: #3fb950;
-  --warning: #d29922;
-  --border: #30363d;
+  /* Backgrounds — neumorphic layering */
+  --bg-base: #f0edf6;
+  /* page canvas */
+  --bg-surface: #ece8f3;
+  /* cards, panels */
+  --bg-raised: #f7f4fc;
+  /* inputs, inner elements */
+
+  /* Brand — orchid / iris / lavender / lilac */
+  --orchid: #9b72cf;
+  --orchid-dark: #7c55b8;
+  --iris: #7c6bc4;
+  --iris-dark: #6357a8;
+  --lavender: #b39ddb;
+  --lilac: #d1c4e9;
+  --lilac-light: #ede7f6;
+
+  /* Text */
+  --text-primary: #3d2c6e;
+  --text-secondary: #8b7ab8;
+  --text-muted: #b0a3cc;
+
+  /* Semantic */
+  --success: #a8d8b9;
+  --success-bg: #e8f5e9;
+  --warning: #ffd180;
+  --warning-bg: #fff8e1;
+  --danger: #e57373;
+  --danger-bg: #ffebee;
+  --info: #90caf9;
+  --info-bg: #e3f2fd;
+
+  /* Neumorphic shadows */
+  --shadow-color: #c8c0dc;
+  --highlight-color: #ffffff;
+  --neu-sm:
+    4px 4px 8px var(--shadow-color),
+    -4px -4px 8px var(--highlight-color);
+  --neu-md:
+    6px 6px 14px var(--shadow-color),
+    -6px -6px 14px var(--highlight-color);
+  --neu-lg:
+    10px 10px 24px var(--shadow-color),
+    -10px -10px 24px var(--highlight-color);
+  --neu-inset:
+    inset 3px 3px 8px var(--shadow-color),
+    inset -3px -3px 8px var(--highlight-color);
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --font-display: 'Nunito', sans-serif;
+  --font-body: 'Nunito Sans', sans-serif;
 }
 
-body {
+/* ── Reset ───────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
 }

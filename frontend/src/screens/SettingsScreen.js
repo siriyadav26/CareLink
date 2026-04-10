@@ -1,128 +1,194 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Switch, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, Switch, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAccessibility } from '../context/AccessibilityContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI } from '../services/api';
+
+const COLORS = {
+  bg: '#f0edf6', surface: '#ece8f3', raised: '#f7f4fc',
+  orchid: '#9b72cf', lavender: '#b39ddb', iris: '#7c6bc4',
+  lilac: '#d1c4e9', textPrimary: '#3d2c6e', textSecondary: '#8b7ab8',
+  shadow: '#c8c0dc', highlight: '#ffffff', danger: '#e57373',
+};
+const neu = (d = 6) => ({
+  shadowColor: COLORS.shadow, shadowOffset: { width: d, height: d },
+  shadowOpacity: 0.5, shadowRadius: d * 1.5, elevation: d,
+});
 
 export default function SettingsScreen({ navigation }) {
   const {
-    soundEnabled,
-    setSoundEnabled,
-    highContrast,
-    setHighContrast,
-    largeText,
-    setLargeText,
-    bigCursor,
-    setBigCursor,
-    theme,
-    fontSize,
-    headingSize,
-    speak,
+    soundEnabled, setSoundEnabled, highContrast, setHighContrast,
+    largeText, setLargeText, bigCursor, setBigCursor,
+    fontSize, headingSize, speak,
   } = useAccessibility();
 
-
-  useEffect(() => {
-    // Empty effect since loadUser was removed
-  }, []);
-
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('token');
-    await AsyncStorage.removeItem('user');
-    navigation.replace('Login');
-    speak('You have been logged out');
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out', style: 'destructive', onPress: async () => {
+          await AsyncStorage.removeItem('token');
+          await AsyncStorage.removeItem('user');
+          navigation.replace('Login');
+          speak('You have been signed out');
+        }
+      },
+    ]);
   };
 
+  const accessibilitySettings = [
+    {
+      id: 'sound', icon: 'volume-high-outline', iconBg: '#e8eaf6',
+      label: 'Voice Feedback', desc: 'Read aloud when touching elements',
+      value: soundEnabled, onToggle: setSoundEnabled,
+    },
+    {
+      id: 'contrast', icon: 'contrast-outline', iconBg: '#fce4ec',
+      label: 'High Contrast', desc: 'Dark blue and white theme for better visibility',
+      value: highContrast, onToggle: setHighContrast,
+    },
+    {
+      id: 'text', icon: 'text-outline', iconBg: '#f3e5f5',
+      label: 'Large Text', desc: 'Increase font size for better readability',
+      value: largeText, onToggle: setLargeText,
+    },
+    {
+      id: 'cursor', icon: 'hand-left-outline', iconBg: '#e8f5e9',
+      label: 'Big Cursor', desc: 'Show large cursor for easier tracking',
+      value: bigCursor, onToggle: setBigCursor,
+    },
+  ];
+
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]} contentContainerStyle={styles.content}>
-      <Text style={[styles.sectionTitle, { color: theme.text, fontSize: headingSize }]}>
-        Accessibility Settings
-      </Text>
-
-      <View style={[styles.settingItem, { backgroundColor: theme.surface }]}>
-        <View>
-          <Text style={[styles.settingLabel, { color: theme.text, fontSize }]}>Sound Button</Text>
-          <Text style={[styles.settingDesc, { color: theme.textSecondary, fontSize: fontSize - 2 }]}>
-            Read aloud when touching elements
-          </Text>
-        </View>
-        <Switch value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{ false: '#767577', true: theme.secondary }} />
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {/* Page header */}
+      <View style={styles.pageHeader}>
+        <Text style={styles.pageEyebrow}>Preferences</Text>
+        <Text style={[styles.pageTitle, { fontSize: headingSize + 4 }]}>Settings</Text>
       </View>
 
-      <View style={[styles.settingItem, { backgroundColor: theme.surface }]}>
-        <View>
-          <Text style={[styles.settingLabel, { color: theme.text, fontSize }]}>High Contrast Mode</Text>
-          <Text style={[styles.settingDesc, { color: theme.textSecondary, fontSize: fontSize - 2 }]}>
-            Dark blue and white theme for better visibility
-          </Text>
-        </View>
-        <Switch value={highContrast} onValueChange={setHighContrast} />
+      {/* Accessibility section */}
+      <View style={styles.sectionLabel}>
+        <Ionicons name="accessibility-outline" size={15} color={COLORS.orchid} />
+        <Text style={[styles.sectionText, { fontSize: fontSize - 2 }]}>Accessibility</Text>
       </View>
 
-      <View style={[styles.settingItem, { backgroundColor: theme.surface }]}>
-        <View>
-          <Text style={[styles.settingLabel, { color: theme.text, fontSize }]}>Large Text</Text>
-          <Text style={[styles.settingDesc, { color: theme.textSecondary, fontSize: fontSize - 2 }]}>
-            Increase font size for better readability
-          </Text>
-        </View>
-        <Switch value={largeText} onValueChange={setLargeText} />
+      <View style={styles.settingsCard}>
+        {accessibilitySettings.map((item, index) => (
+          <View key={item.id}>
+            <View style={styles.settingRow}>
+              <View style={[styles.settingIcon, { backgroundColor: item.iconBg }]}>
+                <Ionicons name={item.icon} size={18} color={COLORS.orchid} />
+              </View>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { fontSize }]}>{item.label}</Text>
+                <Text style={[styles.settingDesc, { fontSize: fontSize - 3 }]}>{item.desc}</Text>
+              </View>
+              <Switch
+                value={item.value}
+                onValueChange={item.onToggle}
+                trackColor={{ false: COLORS.lilac, true: COLORS.orchid }}
+                thumbColor={COLORS.highlight}
+                ios_backgroundColor={COLORS.lilac}
+              />
+            </View>
+            {index < accessibilitySettings.length - 1 && <View style={styles.divider} />}
+          </View>
+        ))}
       </View>
 
-      <View style={[styles.settingItem, { backgroundColor: theme.surface }]}>
-        <View>
-          <Text style={[styles.settingLabel, { color: theme.text, fontSize }]}>Big Cursor (Web)</Text>
-          <Text style={[styles.settingDesc, { color: theme.textSecondary, fontSize: fontSize - 2 }]}>
-            Show large cursor for easier tracking
-          </Text>
-        </View>
-        <Switch value={bigCursor} onValueChange={setBigCursor} />
+      {/* Security section */}
+      <View style={styles.sectionLabel}>
+        <Ionicons name="shield-outline" size={15} color={COLORS.orchid} />
+        <Text style={[styles.sectionText, { fontSize: fontSize - 2 }]}>Security</Text>
       </View>
 
-      <Text style={[styles.sectionTitle, { color: theme.text, fontSize: headingSize, marginTop: 20 }]}>
-        Security
-      </Text>
+      <View style={styles.settingsCard}>
+        <TouchableOpacity
+          style={styles.settingRow}
+          onPress={() => navigation.navigate('FaceLogin', { mode: 'enroll' })}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.settingIcon, { backgroundColor: '#e8eaf6' }]}>
+            <Ionicons name="scan-outline" size={18} color={COLORS.iris} />
+          </View>
+          <View style={styles.settingInfo}>
+            <Text style={[styles.settingLabel, { fontSize }]}>Face Recognition</Text>
+            <Text style={[styles.settingDesc, { fontSize: fontSize - 3 }]}>Use your face to sign in securely</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+      </View>
 
-      <TouchableOpacity 
-        style={[styles.settingItem, { backgroundColor: theme.surface }]}
-        onPress={() => navigation.navigate('FaceLogin', { mode: 'enroll' })}
-      >
-        <View>
-          <Text style={[styles.settingLabel, { color: theme.text, fontSize }]}>Enroll Face Recognition</Text>
-          <Text style={[styles.settingDesc, { color: theme.textSecondary, fontSize: fontSize - 2 }]}>
-            Use your face to log in securely
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={24} color={theme.textSecondary} />
+      {/* About section */}
+      <View style={styles.sectionLabel}>
+        <Ionicons name="information-circle-outline" size={15} color={COLORS.orchid} />
+        <Text style={[styles.sectionText, { fontSize: fontSize - 2 }]}>About</Text>
+      </View>
+
+      <View style={styles.settingsCard}>
+        {[
+          { label: 'Version', value: '1.0.0', icon: 'code-slash-outline' },
+          { label: 'Terms of Service', value: '', icon: 'document-text-outline', arrow: true },
+          { label: 'Privacy Policy', value: '', icon: 'lock-closed-outline', arrow: true },
+        ].map((item, i) => (
+          <View key={item.label}>
+            <View style={styles.settingRow}>
+              <View style={[styles.settingIcon, { backgroundColor: '#f3e5f5' }]}>
+                <Ionicons name={item.icon} size={17} color={COLORS.lavender} />
+              </View>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { fontSize }]}>{item.label}</Text>
+              </View>
+              {item.value ? (
+                <Text style={[{ fontSize: fontSize - 2, color: COLORS.textSecondary, fontWeight: '600' }]}>{item.value}</Text>
+              ) : (
+                <Ionicons name="chevron-forward" size={17} color={COLORS.textSecondary} />
+              )}
+            </View>
+            {i < 2 && <View style={styles.divider} />}
+          </View>
+        ))}
+      </View>
+
+      {/* Logout */}
+      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.85}>
+        <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
+        <Text style={[styles.logoutText, { fontSize: fontSize + 1 }]}>Sign Out</Text>
       </TouchableOpacity>
 
-
-      <TouchableOpacity style={[styles.logoutButton, { backgroundColor: theme.accent }]} onPress={handleLogout}>
-        <Text style={[styles.logoutText, { color: '#FFFFFF', fontSize: fontSize + 2 }]}>Logout</Text>
-      </TouchableOpacity>
+      <Text style={styles.footerNote}>CareLink AI · Made with 💜 for better care</Text>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { padding: 20, paddingBottom: 40 },
-  sectionTitle: { fontWeight: 'bold', marginBottom: 20 },
-  settingItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: 24, paddingBottom: 56 },
+
+  pageHeader: { marginBottom: 28, marginTop: 8 },
+  pageEyebrow: { fontSize: 11, color: COLORS.textSecondary, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
+  pageTitle: { fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5 },
+
+  sectionLabel: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 8, paddingLeft: 4 },
+  sectionText: { color: COLORS.orchid, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+
+  settingsCard: { backgroundColor: COLORS.surface, borderRadius: 24, marginBottom: 20, overflow: 'hidden', ...neu(6) },
+  settingRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 18, gap: 14 },
+  settingIcon: {
+    width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', ...neu(3),
   },
-  settingLabel: { fontWeight: '600', marginBottom: 4 },
-  settingDesc: { marginTop: 2 },
-  card: { padding: 16, borderRadius: 12, marginBottom: 12 },
-  inputLabel: { fontWeight: 'bold', marginBottom: 5 },
-  input: { borderRadius: 8, padding: 12, borderWidth: 1, borderColor: '#ddd' },
-  saveButton: { marginTop: 15, padding: 12, borderRadius: 8, alignItems: 'center' },
-  saveButtonText: { fontWeight: 'bold' },
-  logoutButton: { marginTop: 30, padding: 15, borderRadius: 12, alignItems: 'center' },
-  logoutText: { fontWeight: 'bold' },
+  settingInfo: { flex: 1 },
+  settingLabel: { fontWeight: '700', color: COLORS.textPrimary, marginBottom: 3 },
+  settingDesc: { color: COLORS.textSecondary, fontWeight: '500', lineHeight: 18 },
+  divider: { height: 1, backgroundColor: COLORS.lilac, marginLeft: 74 },
+
+  logoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: COLORS.surface, borderRadius: 20, paddingVertical: 18, marginTop: 8, marginBottom: 24,
+    borderWidth: 1.5, borderColor: '#f8bbd0', ...neu(5),
+  },
+  logoutText: { color: COLORS.danger, fontWeight: '700' },
+
+  footerNote: { textAlign: 'center', fontSize: 12, color: COLORS.textSecondary, fontWeight: '500' },
 });
