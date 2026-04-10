@@ -53,7 +53,8 @@ export default function RegisterScreen({ navigation }) {
       const response = await authAPI.register({ name, email, password, role, caretakerPhone, caretakerEmail });
       await AsyncStorage.setItem('token', response.data.token);
       await AsyncStorage.setItem('user', JSON.stringify(response.data.user));
-      navigation.replace('FaceLogin', { mode: 'enroll', email });
+      // Redirect to Face Setup instead of Dashboard
+      navigation.replace('Main');
     } catch (error) {
       Alert.alert('Registration Failed', error.response?.data?.message || 'Something went wrong');
     } finally { setLoading(false); }
